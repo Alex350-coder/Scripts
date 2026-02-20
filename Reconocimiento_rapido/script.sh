@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Script de Automatización de Escaneo Inicial
-# Autor: Ander-350-Coder
+# Script de Automatización de Escaneo Inicial - Versión Definitiva
+# Autor: Security Automation Script
 # Uso: ./autorecon.sh <TARGET_IP/DOMAIN>
 
 # Colores para output
@@ -9,32 +9,60 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
 # Verificar que se proporcionó un objetivo
 if [ $# -eq 0 ]; then
-    echo -e "${RED}[!] Uso: $0 <TARGET_IP/DOMAIN>${NC}"
-    echo -e "${YELLOW}[*] Ejemplo: $0 192.168.1.100${NC}"
-    echo -e "${YELLOW}[*] Ejemplo: $0 realgob.dl${NC}"
-    echo -e "${YELLOW}[*] Ejemplo: $0 target.com${NC}"
+    echo -e "${RED}╔════════════════════════════════════════╗${NC}"
+    echo -e "${RED}║           ERROR: SIN OBJETIVO         ║${NC}"
+    echo -e "${RED}╚════════════════════════════════════════╝${NC}"
+    echo -e "${YELLOW}Uso: $0 <TARGET_IP/DOMAIN>${NC}"
+    echo -e "${GREEN}Ejemplos:${NC}"
+    echo -e "  $0 192.168.1.100"
+    echo -e "  $0 realgob.dl"
+    echo -e "  $0 target.com"
     exit 1
 fi
 
 TARGET=$1
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 OUTPUT_DIR="scan_results_${TARGET//[^a-zA-Z0-9]/_}_${TIMESTAMP}"
-REPORT_FILE="${OUTPUT_DIR}/full_report.txt"
 
-# Crear directorio de resultados
-mkdir -p "$OUTPUT_DIR"
+# Banner de inicio
+echo -e "${CYAN}╔════════════════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}║              AUTORECON - ESCANEO INICIAL              ║${NC}"
+echo -e "${CYAN}╚════════════════════════════════════════════════════════╝${NC}"
+echo -e "${WHITE}Objetivo:${NC} ${GREEN}$TARGET${NC}"
+echo -e "${WHITE}Inicio:${NC}   $(date)"
+echo ""
 
-echo -e "${GREEN}[+] Iniciando escaneo inicial contra: $TARGET${NC}"
-echo -e "${GREEN}[+] Directorio de resultados: $OUTPUT_DIR${NC}"
+# =============================================
+# PREGUNTAR SI GENERAR REPORTE
+# =============================================
+echo -e "${YELLOW}┌─[ CONFIGURACIÓN ]─────────────────────────┐${NC}"
+echo -e "${YELLOW}│${NC}  ¿Deseas generar archivos de reporte?      ${YELLOW}│${NC}"
+echo -e "${YELLOW}│${NC}  (s/n) - por defecto: n                    ${YELLOW}│${NC}"
+echo -e "${YELLOW}└─────────────────────────────────────────┘${NC}"
+echo -ne "${GREEN}➜ ${NC}"
+read -r GENERATE_REPORT
+
+if [[ "$GENERATE_REPORT" =~ ^[Ss]$ ]]; then
+    SAVE_RESULTS=true
+    mkdir -p "$OUTPUT_DIR"
+    REPORT_FILE="${OUTPUT_DIR}/full_report.txt"
+    echo -e "\n${GREEN}[✓] Reportes se guardarán en:${NC} $OUTPUT_DIR"
+else
+    SAVE_RESULTS=false
+    echo -e "\n${YELLOW}[i] Modo solo pantalla: No se guardarán archivos${NC}"
+fi
 echo ""
 
 # Función para mostrar separadores
 separator() {
-    echo -e "${BLUE}=============================================${NC}"
+    echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
 }
 
 # =============================================
@@ -43,17 +71,25 @@ separator() {
 echo -e "${YELLOW}[*] Iniciando escaneo Nmap (sCV)...${NC}"
 separator
 
-# Archivos de salida
-NMAP_SCAN_FILE="${OUTPUT_DIR}/nmap_full_scan.txt"
-NMAP_FILTERED_FILE="${OUTPUT_DIR}/nmap_filtered.txt"
-
-# Crear archivos ANTES de ejecutar
-touch "$NMAP_SCAN_FILE"
-touch "$NMAP_FILTERED_FILE"
+# Configurar archivos si se guardan resultados
+if [ "$SAVE_RESULTS" = true ]; then
+    NMAP_SCAN_FILE="${OUTPUT_DIR}/nmap_full_scan.txt"
+    NMAP_FILTERED_FILE="${OUTPUT_DIR}/nmap_filtered.txt"
+    touch "$NMAP_SCAN_FILE"
+    touch "$NMAP_FILTERED_FILE"
+else
+    NMAP_SCAN_FILE="/tmp/nmap_scan_$$.txt"
+    NMAP_FILTERED_FILE="/tmp/nmap_filtered_$$.txt"
+fi
 
 # Escaneo completo con -sCV
 echo -e "${YELLOW}[*] Ejecutando escaneo completo...${NC}"
-nmap -sCV -T4 --min-rate=1000 -p- -oN "$NMAP_SCAN_FILE" "$TARGET" > /dev/null 2>&1
+if [ "$SAVE_RESULTS" = true ]; then
+    nmap -sCV -T4 --min-rate=1000 -p- -oN "$NMAP_SCAN_FILE" "$TARGET" > /dev/null 2>&1
+else
+    # Mostrar progreso en tiempo real
+    nmap -sCV -T4 --min-rate=1000 -p- "$TARGET" | tee "$NMAP_SCAN_FILE"
+fi
 
 # Verificar que nmap se ejecutó correctamente
 if [ ! -s "$NMAP_SCAN_FILE" ]; then
@@ -62,55 +98,52 @@ if [ ! -s "$NMAP_SCAN_FILE" ]; then
     nmap -sCV -T4 -p- "$TARGET" > "$NMAP_SCAN_FILE" 2>&1
 fi
 
-# Filtrar información importante
-echo -e "${GREEN}[+] Extraendo información relevante...${NC}"
-
 # Extraer puertos abiertos
 OPEN_PORTS=$(grep -E "^[0-9]+/tcp.*open" "$NMAP_SCAN_FILE" 2>/dev/null | awk '{print $1}' | cut -d'/' -f1 | tr '\n' ',' | sed 's/,$//')
 
-# Mostrar resultados filtrados
-{
-    echo "RESULTADOS NMAP FILTRADOS"
-    echo "========================="
-    echo "Objetivo: $TARGET"
-    echo "Fecha: $(date)"
-    echo ""
-    echo "Puertos Abiertos: $OPEN_PORTS"
-    echo ""
-    echo "Detalles por Puerto:"
-    echo "-------------------"
-    
-    # Extraer sección por sección
-    awk '/^PORT.*STATE.*SERVICE/,/^$/' "$NMAP_SCAN_FILE" 2>/dev/null | head -50
-    
-    echo ""
-    echo "Información Adicional:"
-    echo "---------------------"
-    grep -A 5 "Service detection performed\|Nmap done" "$NMAP_SCAN_FILE" 2>/dev/null | head -10
-    
-} > "$NMAP_FILTERED_FILE"
-
-# Mostrar resumen de nmap
-echo -e "${GREEN}[+] Escaneo Nmap completado${NC}"
-echo -e "${YELLOW}[*] Puertos TCP abiertos encontrados:${NC}"
-if [ -n "$OPEN_PORTS" ] && [ "$OPEN_PORTS" != "" ]; then
-    echo -e "${GREEN}$OPEN_PORTS${NC}"
-else
-    echo -e "${RED}[-] No se encontraron puertos TCP abiertos${NC}"
+# Mostrar resultados en tiempo real si no se guardan
+if [ "$SAVE_RESULTS" = false ]; then
+    echo -e "\n${GREEN}[+] RESULTADOS NMAP:${NC}"
+    separator
+    grep -E "^[0-9]+/tcp" "$NMAP_SCAN_FILE" 2>/dev/null | while read -r line; do
+        port=$(echo "$line" | awk '{print $1}')
+        service=$(echo "$line" | awk '{print $3}')
+        version=$(echo "$line" | cut -d' ' -f4-)
+        echo -e "  ${GREEN}$port${NC} - ${YELLOW}$service${NC} ${WHITE}$version${NC}"
+    done
 fi
 
+# Guardar resultados filtrados si aplica
+if [ "$SAVE_RESULTS" = true ]; then
+    {
+        echo "RESULTADOS NMAP FILTRADOS"
+        echo "========================="
+        echo "Objetivo: $TARGET"
+        echo "Fecha: $(date)"
+        echo ""
+        echo "Puertos Abiertos: $OPEN_PORTS"
+        echo ""
+        echo "Detalles por Puerto:"
+        echo "-------------------"
+        awk '/^PORT.*STATE.*SERVICE/,/^$/' "$NMAP_SCAN_FILE" 2>/dev/null | head -50
+    } > "$NMAP_FILTERED_FILE"
+fi
+
+# Mostrar resumen de nmap
+echo -e "\n${GREEN}[+] Escaneo Nmap completado${NC}"
+echo -e "${WHITE}Puertos TCP abiertos encontrados:${NC} ${GREEN}${OPEN_PORTS:-Ninguno}${NC}"
+
 # Mostrar servicios principales
-echo -e "\n${YELLOW}[*] Servicios principales detectados:${NC}"
+echo -e "\n${YELLOW}Servicios detectados:${NC}"
 grep -E "^[0-9]+/tcp.*open.*[a-zA-Z]" "$NMAP_SCAN_FILE" 2>/dev/null | head -10 | while read -r service; do
     port=$(echo "$service" | awk '{print $1}')
     service_name=$(echo "$service" | awk '{print $3}')
     version=$(echo "$service" | cut -d' ' -f4-)
-    echo -e "${GREEN}  $port - $service_name${NC}"
-    [ -n "$version" ] && echo "      Versión: $version"
+    echo -e "  ${GREEN}➜${NC} ${WHITE}$port${NC} | ${YELLOW}$service_name${NC} ${version}"
 done
 
 # =============================================
-# 2. DETECCIÓN DE SERVICIOS WEB (SIMPLIFICADA)
+# 2. DETECCIÓN DE SERVICIOS WEB
 # =============================================
 echo -e "\n${YELLOW}[*] Analizando servicios web...${NC}"
 
@@ -123,17 +156,15 @@ elif echo "$OPEN_PORTS" | grep -q "80"; then
     WEB_URL="http://$TARGET"
     echo -e "${GREEN}[+] Servicio HTTP detectado (puerto 80)${NC}"
 else
-    # Verificar si el objetivo parece un dominio (tiene letras)
-    if [[ "$TARGET" =~ [a-zA-Z] ]]; then
-        echo -e "${YELLOW}[*] Objetivo parece dominio, probando HTTP/HTTPS...${NC}"
+    # Verificar si el objetivo parece un dominio
+    if [[ "$TARGET" =~ [a-zA-Z] ]] && [ ! "$TARGET" =~ ^[0-9.]+$ ]; then
+        echo -e "${YELLOW}[*] Probando HTTP/HTTPS en dominio...${NC}"
         
-        # Probar HTTP primero
         HTTP_CODE=$(timeout 5 curl -s -o /dev/null -w "%{http_code}" "http://$TARGET" 2>/dev/null || echo "FAILED")
         if [[ "$HTTP_CODE" =~ ^[234] ]]; then
             WEB_URL="http://$TARGET"
             echo -e "${GREEN}[+] Dominio responde a HTTP (código $HTTP_CODE)${NC}"
         else
-            # Probar HTTPS
             HTTPS_CODE=$(timeout 5 curl -s -o /dev/null -w "%{http_code}" "https://$TARGET" 2>/dev/null || echo "FAILED")
             if [[ "$HTTPS_CODE" =~ ^[234] ]]; then
                 WEB_URL="https://$TARGET"
@@ -144,16 +175,15 @@ else
 fi
 
 # =============================================
-# 3. ESCANEO GOBUSTER - SI HAY URL WEB
+# 3. ESCANEO GOBUSTER - SOLO CON DICCIONARIO MEDIUM
 # =============================================
 if [ -n "$WEB_URL" ] && [[ "$WEB_URL" =~ ^https?:// ]]; then
     echo -e "\n${GREEN}[+] Servicio web detectado en: $WEB_URL${NC}"
     
-    # Limpiar URL (quitar / al final si existe)
     WEB_URL=$(echo "$WEB_URL" | sed 's|/$||')
     echo -e "${YELLOW}[*] URL final para escaneo: $WEB_URL${NC}"
     
-    # Obtener puerto de la URL
+    # Determinar puerto
     PORT_NUM="web"
     if echo "$WEB_URL" | grep -q ":443"; then
         PORT_NUM="443"
@@ -162,204 +192,170 @@ if [ -n "$WEB_URL" ] && [[ "$WEB_URL" =~ ^https?:// ]]; then
     fi
     
     # =============================================
-    # CONFIGURACIÓN DE DICCIONARIOS
+    # CONFIGURACIÓN DE DICCIONARIO MEDIUM
     # =============================================
-    
-    # Diccionario COMMON (básico)
-    DICT_COMMON="/usr/share/wordlists/dirb/common.txt"
-    
-    # Diccionario MEDIUM (Seclists completo) - TU RUTA
     DICT_MEDIUM="/home/kali/Seclist-Dicctionaries/Discovery/Web-Content/DirBuster-2007_directory-list-2.3-medium.txt"
     
-    echo -e "${YELLOW}[*] Usando direcciones exactas de diccionarios${NC}"
-    echo -e "${GREEN}[+] Diccionario common: $DICT_COMMON${NC}"
-    echo -e "${GREEN}[+] Diccionario medium: $DICT_MEDIUM${NC}"
-    
-    # Verificación de diccionarios
-    if [ ! -f "$DICT_COMMON" ]; then
-        echo -e "${RED}[!] ERROR: No se encontró el diccionario common.txt${NC}"
-        echo -e "${YELLOW}[*] Creando diccionario temporal mínimo...${NC}"
-        DICT_COMMON="${OUTPUT_DIR}/common_mini.txt"
-        echo -e "admin\nlogin\ndashboard\napi\ntest\nbackup\nconfig\nwp-admin\nphpmyadmin\nserver-status" > "$DICT_COMMON"
-    fi
-    
+    # Verificar diccionario
     if [ ! -f "$DICT_MEDIUM" ]; then
-        echo -e "${RED}[!] ERROR: No se encontró el diccionario medium${NC}"
-        echo -e "${YELLOW}[*] Usando diccionario common para ambos escaneos${NC}"
-        DICT_MEDIUM="$DICT_COMMON"
+        echo -e "${YELLOW}[!] Diccionario medium no encontrado, creando temporal...${NC}"
+        DICT_MEDIUM="/tmp/medium_$$.txt"
+        echo -e "admin\nlogin\ndashboard\napi\ntest\nbackup\nconfig\nwp-admin\nphpmyadmin\nserver-status\n.env\n.git\n.svn\nbackup.sql\nconfig.php\nindex.php" > "$DICT_MEDIUM"
+    fi
+    
+    # Configurar archivos de salida
+    if [ "$SAVE_RESULTS" = true ]; then
+        GOBUSTER_MEDIUM_FILE="${OUTPUT_DIR}/gobuster_medium_${PORT_NUM}.txt"
+        GOBUSTER_FILTERED_FILE="${OUTPUT_DIR}/gobuster_filtered_${PORT_NUM}.txt"
+        GOBUSTER_LOG_FILE="${OUTPUT_DIR}/gobuster_execution.log"
+        
+        > "$GOBUSTER_MEDIUM_FILE"
+        > "$GOBUSTER_FILTERED_FILE"
+        > "$GOBUSTER_LOG_FILE"
+    else
+        GOBUSTER_MEDIUM_FILE="/tmp/gobuster_medium_$$.txt"
+        GOBUSTER_LOG_FILE="/tmp/gobuster_log_$$.txt"
     fi
     
     # =============================================
-    # ARCHIVOS DE SALIDA
+    # DIAGNÓSTICO DEL SITIO
     # =============================================
-    GOBUSTER_COMMON_FILE="${OUTPUT_DIR}/gobuster_common_${PORT_NUM}.txt"
-    GOBUSTER_MEDIUM_FILE="${OUTPUT_DIR}/gobuster_medium_${PORT_NUM}.txt"
-    GOBUSTER_FILTERED_FILE="${OUTPUT_DIR}/gobuster_filtered_${PORT_NUM}.txt"
-    GOBUSTER_LOG_FILE="${OUTPUT_DIR}/gobuster_execution.log"
-    
-    # Crear archivos vacíos ANTES de ejecutar
-    > "$GOBUSTER_COMMON_FILE"
-    > "$GOBUSTER_MEDIUM_FILE"
-    > "$GOBUSTER_FILTERED_FILE"
-    > "$GOBUSTER_LOG_FILE"
-    
-    # =============================================
-    # DIAGNÓSTICO RÁPIDO DEL SITIO
-    # =============================================
-    echo -e "\n${YELLOW}[*] Realizando diagnóstico rápido...${NC}"
+    echo -e "\n${YELLOW}[*] Verificando accesibilidad...${NC}"
     
     HTTP_CODE=$(timeout 10 curl -s -o /dev/null -w "%{http_code}" "$WEB_URL" 2>/dev/null || echo "FAILED")
-    echo -e "${YELLOW}[*] Código HTTP: $HTTP_CODE${NC}"
+    GOBUSTER_SSL_FLAG=""
     
     if [[ "$HTTP_CODE" =~ ^[234] ]]; then
-        echo -e "${GREEN}[+] Sitio accesible, procediendo con escaneo...${NC}"
-        CAN_SCAN=true
+        echo -e "${GREEN}[✓] Sitio accesible (HTTP $HTTP_CODE)${NC}"
     else
-        echo -e "${RED}[!] Sitio no accesible (HTTP $HTTP_CODE)${NC}"
-        echo -e "${YELLOW}[*] Intentando con -k (ignore SSL)...${NC}"
-        
-        # Probar ignorando SSL
+        echo -e "${YELLOW}[!] Probando con -k (ignore SSL)...${NC}"
         HTTP_CODE_SSL=$(timeout 10 curl -s -o /dev/null -w "%{http_code}" -k "$WEB_URL" 2>/dev/null || echo "FAILED")
         if [[ "$HTTP_CODE_SSL" =~ ^[234] ]]; then
-            echo -e "${GREEN}[+] Sitio accesible con -k, ajustando comando...${NC}"
-            # Añadir flag -k a Gobuster
+            echo -e "${GREEN}[✓] Sitio accesible con -k${NC}"
             GOBUSTER_SSL_FLAG="-k"
-            CAN_SCAN=true
         else
-            CAN_SCAN=false
-            echo -e "${RED}[!] No se puede acceder al sitio${NC}"
+            echo -e "${RED}[✗] Sitio no accesible, omitiendo Gobuster${NC}"
+            SKIP_GOBUSTER=true
         fi
     fi
     
     # =============================================
-    # EJECUTAR GOBUSTER
+    # EJECUTAR GOBUSTER (SOLO MEDIUM)
     # =============================================
-    if [ "$CAN_SCAN" = true ]; then
-        # Función para ejecutar gobuster
-        run_gobuster() {
-            local dict_type=$1
-            local dict_file=$2
-            local output_file=$3
-            local extensions=$4
-            
-            echo -e "\n${YELLOW}[*] Ejecutando Gobuster ($dict_type)...${NC}"
-            echo -e "${YELLOW}[*] Comando: gobuster dir -u \"$WEB_URL\" -w \"$dict_file\" -t 20 -x $extensions ${GOBUSTER_SSL_FLAG}${NC}"
-            
-            # Construir comando
-            CMD="gobuster dir -u \"$WEB_URL\" -w \"$dict_file\" -t 20 -x $extensions"
-            [ -n "$GOBUSTER_SSL_FLAG" ] && CMD="$CMD $GOBUSTER_SSL_FLAG"
-            CMD="$CMD -o \"$output_file\""
-            
-            # Ejecutar
-            echo -e "${YELLOW}[*] Iniciando... (puede tardar varios minutos)${NC}"
-            eval timeout 600 $CMD 2>&1 | tee -a "$GOBUSTER_LOG_FILE"
-            
-            local exit_code=${PIPESTATUS[0]}
-            
-            if [ $exit_code -eq 0 ]; then
-                echo -e "${GREEN}[✓] Gobuster ($dict_type) completado${NC}"
-                return 0
-            elif [ $exit_code -eq 124 ]; then
-                echo -e "${YELLOW}[!] Gobuster ($dict_type) timeout (10 minutos)${NC}"
-                return 1
-            else
-                echo -e "${RED}[✗] Gobuster ($dict_type) falló (código $exit_code)${NC}"
-                return 1
-            fi
-        }
+    if [ ! "$SKIP_GOBUSTER" = true ]; then
+        echo -e "\n${YELLOW}[*] Escaneando con diccionario medium...${NC}"
+        echo -e "${WHITE}Esto puede tomar varios minutos...${NC}"
         
-        # Ejecutar Gobuster con common
-        run_gobuster "common" "$DICT_COMMON" "$GOBUSTER_COMMON_FILE" "php,txt,html,js,json"
-        COMMON_SUCCESS=$?
+        # Extensiones ampliadas para medium
+        EXTENSIONS="php,txt,html,js,json,zip,bak,old,backup,sql,config,env,xml,yml,yaml,ini,log,sh,py,rb,pl,cgi,asp,aspx,jsp,do,action"
         
-        # Ejecutar Gobuster con medium (siempre, no solo si common tuvo éxito)
-        echo -e "\n${YELLOW}[*] Continuando con diccionario medium...${NC}"
-        run_gobuster "medium" "$DICT_MEDIUM" "$GOBUSTER_MEDIUM_FILE" "php,txt,html,js,json,zip,bak,old,backup,sql,config,env"
+        CMD="gobuster dir -u \"$WEB_URL\" -w \"$DICT_MEDIUM\" -t 20 -x $EXTENSIONS $GOBUSTER_SSL_FLAG -o \"$GOBUSTER_MEDIUM_FILE\" -q"
         
-        # =============================================
-        # PROCESAR RESULTADOS
-        # =============================================
-        echo -e "\n${GREEN}[+] Procesando resultados...${NC}"
-        
-        # Contar resultados
-        COMMON_RESULTS=0
-        MEDIUM_RESULTS=0
-        
-        if [ -f "$GOBUSTER_COMMON_FILE" ] && [ -s "$GOBUSTER_COMMON_FILE" ]; then
-            COMMON_RESULTS=$(grep -c "Status:" "$GOBUSTER_COMMON_FILE" 2>/dev/null || echo 0)
+        if [ "$SAVE_RESULTS" = false ]; then
+            eval $CMD 2>/dev/null
+        else
+            eval $CMD 2>&1 | tee -a "$GOBUSTER_LOG_FILE" >/dev/null
         fi
         
+        # =============================================
+        # MOSTRAR RESULTADOS DE GOBUSTER (SOLO DIRECTORIOS ENCONTRADOS)
+        # =============================================
         if [ -f "$GOBUSTER_MEDIUM_FILE" ] && [ -s "$GOBUSTER_MEDIUM_FILE" ]; then
-            MEDIUM_RESULTS=$(grep -c "Status:" "$GOBUSTER_MEDIUM_FILE" 2>/dev/null || echo 0)
-        fi
-        
-        # Crear archivo filtrado
-        {
-            echo "RESULTADOS GOBUSTER"
-            echo "==================="
-            echo "URL: $WEB_URL"
-            echo "Fecha: $(date)"
-            echo "Diccionarios:"
-            echo "  - Common: $DICT_COMMON"
-            echo "  - Medium: $DICT_MEDIUM"
-            echo ""
-            echo "ESTADÍSTICAS:"
-            echo "-------------"
-            echo "Resultados common: $COMMON_RESULTS"
-            echo "Resultados medium: $MEDIUM_RESULTS"
-            echo ""
+            # Contar resultados totales
+            TOTAL_RESULTS=$(grep -c "Status:" "$GOBUSTER_MEDIUM_FILE" 2>/dev/null || echo 0)
             
-            if [ "$COMMON_RESULTS" -gt 0 ]; then
-                echo "RESULTADOS COMMON (todos):"
-                echo "-------------------------"
-                cat "$GOBUSTER_COMMON_FILE"
-                echo ""
-            else
-                echo "No se encontraron resultados con diccionario common"
-                echo ""
+            echo -e "\n${CYAN}📁 DIRECTORIOS Y ARCHIVOS ENCONTRADOS:${NC}"
+            echo -e "${WHITE}════════════════════════════════════════════════════════${NC}"
+            
+            # Mostrar TODOS los resultados encontrados (solo lo esencial)
+            grep "Status:" "$GOBUSTER_MEDIUM_FILE" 2>/dev/null | while read -r line; do
+                # Extraer solo la URL y el código de estado de forma limpia
+                url=$(echo "$line" | grep -o 'http[^ ]*' | head -1 | sed 's/^http:\/\///' | sed 's/^https:\/\///')
+                status=$(echo "$line" | grep -o 'Status: [0-9]\+' | cut -d' ' -f2)
+                
+                if [ -n "$url" ]; then
+                    # Formatear según código de estado
+                    case $status in
+                        200) echo -e "  ${GREEN}✓${NC} ${WHITE}$url${NC}" ;;
+                        301|302|307) echo -e "  ${YELLOW}↻${NC} ${WHITE}$url${NC} ${YELLOW}[redirect]${NC}" ;;
+                        403) echo -e "  ${RED}⛔${NC} ${WHITE}$url${NC} ${RED}[forbidden]${NC}" ;;
+                        401) echo -e "  ${PURPLE}🔒${NC} ${WHITE}$url${NC} ${PURPLE}[auth]${NC}" ;;
+                        500) echo -e "  ${RED}💥${NC} ${WHITE}$url${NC} ${RED}[error]${NC}" ;;
+                        *) echo -e "  ${BLUE}•${NC} ${WHITE}$url${NC} ${BLUE}[$status]${NC}" ;;
+                    esac
+                fi
+            done
+            
+            echo -e "${WHITE}════════════════════════════════════════════════════════${NC}"
+            echo -e "${GREEN}Total encontrado:${NC} $TOTAL_RESULTS elementos"
+            
+            # =============================================
+            # DESTACAR HALLAZGOS INTERESANTES
+            # =============================================
+            INTERESTING_FINDS=$(grep -E "\.(env|git|svn|bak|old|backup|sql|config|ini|log|sh|py|rb|pl|cgi|asp|aspx|jsp)" "$GOBUSTER_MEDIUM_FILE" 2>/dev/null | \
+                               grep -E "(admin|login|backup|config|test|debug|api|dashboard|private|secret|wp|cms|drupal|joomla|phpmyadmin|mysql|database)" 2>/dev/null | \
+                               grep -c "Status:" 2>/dev/null || echo 0)
+            
+            if [ "$INTERESTING_FINDS" -gt 0 ]; then
+                echo -e "\n${PURPLE}🔍 HALLAZGOS DE INTERÉS:${NC}"
+                echo -e "${WHITE}════════════════════════════════════════════════════════${NC}"
+                
+                grep -E "\.(env|git|svn|bak|old|backup|sql|config|ini|log|sh|py|rb|pl|cgi|asp|aspx|jsp)" "$GOBUSTER_MEDIUM_FILE" 2>/dev/null | \
+                grep -E "(admin|login|backup|config|test|debug|api|dashboard|private|secret|wp|cms|drupal|joomla|phpmyadmin|mysql|database)" 2>/dev/null | \
+                head -20 | while read -r line; do
+                    
+                    url=$(echo "$line" | grep -o 'http[^ ]*' | head -1 | sed 's/^http:\/\///' | sed 's/^https:\/\///')
+                    status=$(echo "$line" | grep -o 'Status: [0-9]\+' | cut -d' ' -f2)
+                    
+                    if [ -n "$url" ]; then
+                        echo -e "  ${PURPLE}➜${NC} ${WHITE}$url${NC} ${GREEN}[$status]${NC}"
+                    fi
+                done
+                echo -e "${WHITE}════════════════════════════════════════════════════════${NC}"
             fi
             
-            if [ "$MEDIUM_RESULTS" -gt 0 ]; then
-                echo "RESULTADOS MEDIUM (más relevantes):"
-                echo "----------------------------------"
-                # Filtrar resultados interesantes
-                grep -E "Status: (200|301|302|307|403|401)" "$GOBUSTER_MEDIUM_FILE" 2>/dev/null | \
-                grep -E "\.(php|txt|sql|log|bak|config|ini|env|sh|py|xml|json)" 2>/dev/null | \
-                grep -E "(admin|login|backup|config|test|debug|api|dashboard|private|secret|wp|cms|drupal|joomla)" 2>/dev/null | \
-                head -30
+        else
+            echo -e "\n${YELLOW}⚠ No se encontraron directorios o archivos${NC}"
+        fi
+        
+        echo -e "\n${GREEN}[✓] Escaneo Gobuster completado${NC}"
+        
+        # Procesar resultados para guardar si aplica
+        if [ "$SAVE_RESULTS" = true ]; then
+            MEDIUM_RESULTS=$(grep -c "Status:" "$GOBUSTER_MEDIUM_FILE" 2>/dev/null || echo 0)
+            
+            {
+                echo "RESULTADOS GOBUSTER - DICCIONARIO MEDIUM"
+                echo "========================================="
+                echo "URL: $WEB_URL"
+                echo "Fecha: $(date)"
+                echo "Diccionario: $DICT_MEDIUM"
+                echo ""
+                echo "ESTADÍSTICAS:"
+                echo "-------------"
+                echo "Total resultados: $MEDIUM_RESULTS"
                 echo ""
                 
-                echo "ARCHIVOS DE CONFIGURACIÓN ENCONTRADOS:"
-                echo "--------------------------------------"
-                grep -E "Status: (200|301|302|307|403|401)" "$GOBUSTER_MEDIUM_FILE" 2>/dev/null | \
-                grep -E "\.(config|ini|env|cfg|conf|properties|yml|yaml|xml|json)$" 2>/dev/null | \
-                head -15
-            else
-                echo "No se encontraron resultados con diccionario medium"
-                echo ""
-            fi
-            
-        } > "$GOBUSTER_FILTERED_FILE"
-        
-        # Mostrar resumen
-        echo -e "${GREEN}[+] Escaneo Gobuster completado${NC}"
-        echo -e "${YELLOW}[*] Resultados encontrados:${NC}"
-        echo -e "  Common: ${GREEN}$COMMON_RESULTS${NC} resultados"
-        echo -e "  Medium: ${GREEN}$MEDIUM_RESULTS${NC} resultados"
-        
-        # Mostrar algunos resultados si hay
-        if [ "$COMMON_RESULTS" -gt 0 ]; then
-            echo -e "\n${YELLOW}[*] Algunos resultados common:${NC}"
-            grep "Status:" "$GOBUSTER_COMMON_FILE" 2>/dev/null | head -5
+                if [ "$MEDIUM_RESULTS" -gt 0 ]; then
+                    echo "TODOS LOS RESULTADOS ENCONTRADOS:"
+                    echo "---------------------------------"
+                    cat "$GOBUSTER_MEDIUM_FILE"
+                    echo ""
+                    
+                    echo "HALLAZGOS DESTACADOS:"
+                    echo "--------------------"
+                    grep -E "\.(env|git|svn|bak|old|backup|sql|config|ini|log)" "$GOBUSTER_MEDIUM_FILE" 2>/dev/null | \
+                    grep -E "(admin|login|backup|config|test|debug|api|secret|wp|phpmyadmin)" 2>/dev/null | head -30
+                else
+                    echo "No se encontraron resultados"
+                fi
+                
+            } > "$GOBUSTER_FILTERED_FILE"
         fi
-        
-    else
-        echo -e "${RED}[!] No se pudo ejecutar Gobuster - sitio no accesible${NC}"
-        echo "Sitio web no accesible" > "$GOBUSTER_FILTERED_FILE"
     fi
     
 else
-    echo -e "${YELLOW}[*] No se detectaron servicios web accesibles${NC}"
+    echo -e "${YELLOW}[i] No se detectaron servicios web accesibles${NC}"
 fi
 
 # =============================================
@@ -368,12 +364,15 @@ fi
 echo -e "\n${YELLOW}[*] Ejecutando escaneo UDP rápido...${NC}"
 separator
 
-UDP_SCAN_FILE="${OUTPUT_DIR}/nmap_udp_scan.txt"
+if [ "$SAVE_RESULTS" = true ]; then
+    UDP_SCAN_FILE="${OUTPUT_DIR}/nmap_udp_scan.txt"
+else
+    UDP_SCAN_FILE="/tmp/udp_scan_$$.txt"
+fi
+
 UDP_PORTS="53,67,68,69,123,161,162,500,514,520,623,998"
 
-# Crear archivo antes
 > "$UDP_SCAN_FILE"
-
 nmap -sU -T4 -p $UDP_PORTS --open -oN "$UDP_SCAN_FILE" "$TARGET" > /dev/null 2>&1
 
 if grep -q "open" "$UDP_SCAN_FILE" 2>/dev/null; then
@@ -381,97 +380,107 @@ if grep -q "open" "$UDP_SCAN_FILE" 2>/dev/null; then
     grep "open" "$UDP_SCAN_FILE" 2>/dev/null | while read -r line; do
         port=$(echo "$line" | awk '{print $1}')
         service=$(echo "$line" | awk '{print $3}')
-        echo -e "  ${GREEN}$port - $service${NC}"
+        echo -e "  ${GREEN}➜${NC} ${WHITE}$port${NC} - ${YELLOW}$service${NC}"
     done
 else
-    echo -e "${RED}[-] No se encontraron puertos UDP abiertos${NC}"
+    echo -e "${YELLOW}[-] No se encontraron puertos UDP abiertos${NC}"
 fi
 
 # =============================================
-# 5. GENERAR REPORTE FINAL
+# 5. GENERAR REPORTE FINAL (si aplica)
 # =============================================
-echo -e "\n${GREEN}[+] Generando reporte final...${NC}"
-separator
-
-{
-    echo "REPORTE COMPLETO DE ESCANEO INICIAL - AUTORECON"
-    echo "================================================"
-    echo "Objetivo: $TARGET"
-    echo "Fecha: $(date)"
-    echo "Directorio: $OUTPUT_DIR"
-    echo ""
-    echo "1. RESUMEN EJECUTIVO"
-    echo "===================="
-    echo "Puertos TCP abiertos: ${OPEN_PORTS:-Ninguno}"
-    echo "Servicios web detectados: ${WEB_URL:-Ninguno}"
-    echo ""
+if [ "$SAVE_RESULTS" = true ]; then
+    echo -e "\n${YELLOW}[*] Generando reporte final...${NC}"
+    separator
     
-    echo "2. ESCANEO NMAP (sCV)"
-    echo "====================="
-    [ -f "$NMAP_FILTERED_FILE" ] && cat "$NMAP_FILTERED_FILE" || echo "No disponible"
-    echo ""
+    {
+        echo "╔════════════════════════════════════════════════════════╗"
+        echo "║        REPORTE COMPLETO DE ESCANEO - AUTORECON        ║"
+        echo "╚════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "Objetivo: $TARGET"
+        echo "Fecha: $(date)"
+        echo "Directorio: $OUTPUT_DIR"
+        echo ""
+        echo "════════════════════════════════════════════════════════"
+        echo "1. RESUMEN EJECUTIVO"
+        echo "════════════════════════════════════════════════════════"
+        echo "Puertos TCP abiertos: ${OPEN_PORTS:-Ninguno}"
+        echo "Servicios web detectados: ${WEB_URL:-Ninguno}"
+        echo ""
+        
+        echo "════════════════════════════════════════════════════════"
+        echo "2. ESCANEO NMAP"
+        echo "════════════════════════════════════════════════════════"
+        [ -f "$NMAP_FILTERED_FILE" ] && cat "$NMAP_FILTERED_FILE" || echo "No disponible"
+        echo ""
+        
+        echo "════════════════════════════════════════════════════════"
+        echo "3. ESCANEO GOBUSTER (MEDIUM)"
+        echo "════════════════════════════════════════════════════════"
+        if [ -f "$GOBUSTER_FILTERED_FILE" ]; then
+            cat "$GOBUSTER_FILTERED_FILE"
+        else
+            echo "No se realizó escaneo web o no se encontraron resultados"
+        fi
+        echo ""
+        
+        echo "════════════════════════════════════════════════════════"
+        echo "4. ESCANEO UDP"
+        echo "════════════════════════════════════════════════════════"
+        if [ -f "$UDP_SCAN_FILE" ] && grep -q "open" "$UDP_SCAN_FILE" 2>/dev/null; then
+            grep -E "PORT|open" "$UDP_SCAN_FILE" 2>/dev/null
+        else
+            echo "No se encontraron puertos UDP abiertos"
+        fi
+        echo ""
+        
+        echo "════════════════════════════════════════════════════════"
+        echo "5. RECOMENDACIONES"
+        echo "════════════════════════════════════════════════════════"
+        echo "➜ Investigar servicios en puertos: $OPEN_PORTS"
+        if [ -n "$WEB_URL" ] && [[ "$WEB_URL" =~ ^https?:// ]]; then
+            echo "➜ Analizar servicio web: $WEB_URL"
+            echo "➜ Revisar archivos expuestos encontrados"
+        fi
+        echo "➜ Verificar versiones de software para vulnerabilidades"
+        echo "➜ Probar credenciales por defecto"
+        echo ""
+        echo "════════════════════════════════════════════════════════"
+        echo "Reporte generado automáticamente por AutoRecon"
+        echo "════════════════════════════════════════════════════════"
+        
+    } > "$REPORT_FILE"
     
-    echo "3. ESCANEO GOBUSTER"
-    echo "==================="
-    if [ -f "$GOBUSTER_FILTERED_FILE" ]; then
-        cat "$GOBUSTER_FILTERED_FILE"
-    else
-        echo "No se realizó escaneo web"
-    fi
-    echo ""
-    
-    echo "4. ESCANEO UDP"
-    echo "=============="
-    if [ -f "$UDP_SCAN_FILE" ] && grep -q "open" "$UDP_SCAN_FILE" 2>/dev/null; then
-        grep -E "PORT|open" "$UDP_SCAN_FILE" 2>/dev/null
-    else
-        echo "No se encontraron puertos UDP abiertos"
-    fi
-    echo ""
-    
-    echo "5. RECOMENDACIONES"
-    echo "=================="
-    echo "1. Investigar servicios en puertos: $OPEN_PORTS"
-    if [ -n "$WEB_URL" ] && [[ "$WEB_URL" =~ ^https?:// ]]; then
-        echo "2. Analizar servicio web: $WEB_URL"
-        echo "3. Revisar archivos expuestos encontrados"
-        echo "4. Probar vulnerabilidades según versiones detectadas"
-    fi
-    echo "5. Verificar configuraciones por defecto"
-    echo "6. Realizar pruebas de autenticación si aplica"
-    echo ""
-    echo "================================================"
-    echo "Reporte generado automáticamente por AutoRecon"
-    echo "================================================"
-    
-} > "$REPORT_FILE"
-
-# Mostrar resumen final
-echo -e "${GREEN}[+] ESCANEO COMPLETADO${NC}"
-separator
-echo -e "${YELLOW}[*] Resumen del escaneo:${NC}"
-echo -e "  - Objetivo: ${GREEN}$TARGET${NC}"
-echo -e "  - Puertos TCP abiertos: ${GREEN}${OPEN_PORTS:-Ninguno}${NC}"
-if [ -n "$WEB_URL" ] && [[ "$WEB_URL" =~ ^https?:// ]]; then
-    echo -e "  - Servicio web: ${GREEN}$WEB_URL${NC}"
-    if [ -f "$GOBUSTER_FILTERED_FILE" ]; then
-        COMMON_RESULTS=$(grep "Resultados common:" "$GOBUSTER_FILTERED_FILE" 2>/dev/null | awk '{print $3}')
-        MEDIUM_RESULTS=$(grep "Resultados medium:" "$GOBUSTER_FILTERED_FILE" 2>/dev/null | awk '{print $3}')
-        echo -e "  - Resultados Gobuster: ${GREEN}Common=$COMMON_RESULTS, Medium=$MEDIUM_RESULTS${NC}"
-    fi
+    echo -e "${GREEN}[✓] Reporte guardado en:${NC} $REPORT_FILE"
 fi
-echo -e "  - Reporte completo: ${GREEN}$REPORT_FILE${NC}"
+
+# =============================================
+# MOSTRAR RESUMEN FINAL
+# =============================================
+echo -e "\n${CYAN}╔════════════════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}║                    ESCANEO COMPLETADO                   ║${NC}"
+echo -e "${CYAN}╚════════════════════════════════════════════════════════╝${NC}"
+echo -e "${WHITE}Objetivo:${NC}     ${GREEN}$TARGET${NC}"
+echo -e "${WHITE}Puertos TCP:${NC}   ${GREEN}${OPEN_PORTS:-Ninguno}${NC}"
+if [ -n "$WEB_URL" ]; then
+    echo -e "${WHITE}Servicio web:${NC} ${GREEN}$WEB_URL${NC}"
+fi
+echo -e "${WHITE}Finalizado:${NC}   $(date)"
 echo ""
-echo -e "${YELLOW}[*] Archivos generados:${NC}"
-ls -1 "$OUTPUT_DIR"/*.txt "$OUTPUT_DIR"/*.log 2>/dev/null | head -15 | while read file; do
-    filename=$(basename "$file")
-    echo -e "  - ${GREEN}$filename${NC}"
-done
-echo ""
-echo -e "${GREEN}[+] Para ver el reporte completo:${NC}"
-echo -e "    ${YELLOW}cat \"$REPORT_FILE\"${NC}"
-echo ""
-echo -e "${GREEN}[+] Para ver logs de ejecución:${NC}"
-echo -e "    ${YELLOW}cat \"$OUTPUT_DIR/gobuster_execution.log\"${NC}"
-echo ""
-echo -e "${GREEN}[✓] ¡Listo para análisis manual!${NC}"
+
+if [ "$SAVE_RESULTS" = true ]; then
+    echo -e "${GREEN}📁 Resultados guardados en:${NC}"
+    echo -e "  ${YELLOW}➜${NC} $OUTPUT_DIR/"
+    echo -e "  ${YELLOW}➜${NC} Reporte: $REPORT_FILE"
+    echo ""
+    echo -e "${YELLOW}Para ver el reporte:${NC}"
+    echo -e "  cat \"$REPORT_FILE\""
+else
+    echo -e "${YELLOW}Modo solo pantalla: No se guardaron archivos${NC}"
+fi
+
+echo -e "\n${GREEN}[✓] ¡Listo para análisis manual!${NC}"
+
+# Limpiar archivos temporales
+rm -f /tmp/nmap_scan_$$.txt /tmp/nmap_filtered_$$.txt /tmp/gobuster_*_$$.txt /tmp/udp_scan_$$.txt /tmp/medium_$$.txt 2>/dev/null
